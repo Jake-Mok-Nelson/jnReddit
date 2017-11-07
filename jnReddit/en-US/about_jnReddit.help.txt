@@ -1,0 +1,14 @@
+PSTOPIC
+    about_jnReddit
+
+SHORT DESCRIPTION
+    jnReddit allows you to query Reddit for post and user data.
+
+LONG DESCRIPTION
+    jnReddit allows you to query Reddit for post and user data via their REST API.
+
+    You can find API documentation here:
+        https://www.reddit.com/dev/api/
+
+DETAILED DESCRIPTION
+    
