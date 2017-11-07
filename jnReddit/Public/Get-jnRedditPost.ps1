@@ -6,8 +6,14 @@
     .DESCRIPTION
         Get posts from Reddit
 
-    .PARAMETER Subreddit
-        Subreddit name
+    .PARAMETER Name
+        Subreddit or user name
+
+    .PARAMETER QueryType
+    Query either a subreddit or a user's posts
+    Sorting method:
+            Subreddit
+            User
 
     .PARAMETER Sort
         Sorting method:
@@ -27,6 +33,12 @@
         Response format:
             JSON
             Object
+    
+    .PARAMETER Filter
+    Response format:
+        TextPost
+        ImagePost
+        Any
 
     .EXAMPLE
         Get-jnRedditPost sysadmin
@@ -40,7 +52,6 @@
         #    From /r/sysadmin...
         #    Sorted by new posts...
         #    Maximum of five items...
-        #    JSON format...
 
     .EXAMPLE
         $subreddits = "sysadmin", "devops"; $subreddits | Get-jnRedditPost -Sort New -MaxResults 20
@@ -48,7 +59,13 @@
         # Iterates each of the subreddits in the array...
         #    Sorted by new posts...
         #    Maximum items returns is 20...
-        #    JSON format...
+
+        .EXAMPLE
+        Get-jnRedditPost -Name SomeUserName -QueryType User -MaxResults 4 -Verbose
+
+        # Finds posts authored by the specified name
+        #    Returns only four items...
+        #    Outputs verbose information...
 
     .FUNCTIONALITY
         Reddit
@@ -65,20 +82,29 @@
         [parameter(
             ValueFromPipeline = $True,
             Mandatory = $True,
-            HelpMessage = "What is the subreddit you would like to query?"
+            HelpMessage = "What is the subreddit or user you would like to query?"
         )]
         [ValidateCount(1,22)]
-        [string]$Subreddit,
+        [string]$Name,
+
+        # Should we query a subreddit or a user? Assume subreddit by default.
+        [ValidateSet('Subreddit', 'User')]
+        [string]$QueryType = 'Subreddit',
         
         [ValidateSet('Hot', 'New', 'Rising', 'Controversial', 'Top')]
         [string]$Sort = 'New',
         
         [string]$Uri = 'https://api.reddit.com',
 
+        # 25 is the default recommended by Reddit, max is 100.
+        [ValidateRange(1,100)] 
         [int]$MaxResults = 25,
 
         [ValidateSet('JSON', 'Object')]
-        [string]$ResponseFormat = "JSON"
+        [string]$ResponseFormat = "Object",
+
+        [ValidateSet('TextPost', 'ImagePost', 'Any')]
+        [string]$Filter = "Any"
     )
 
     # this holds our results before returning the object in the event
@@ -87,8 +113,17 @@
 
     $Sort = $Sort.ToLower()
 
-    ForEach($sub in $Subreddit){
-        $subRedditUri = $Uri + "/r/$sub/$Sort.json?sort=new?count=$maxResults"
+    $webUrl = $Uri.Replace("api","www")
+
+    ForEach($itm in $Name){
+        if ($queryType -contains "Subreddit"){
+            $subRedditUri = $Uri + '/r/' + $itm + "/$Sort.json?limit=$maxResults"
+        }
+        elseif ($QueryType -contains "User") {
+            $subRedditUri = $Uri + "/search?q=author%3A$Name&sort=new"
+        }
+
+        #https://api.reddit.com/search?q=author%3AJake-S-Nelson
 
         Try{
             Write-Verbose -Message "Querying Reddit with Uri: $subRedditUri"
@@ -130,11 +165,25 @@
                                 'id' = $currentPost.id;
                                 'content' = $currentPost.selftext;
                                 'title' = $currentPost.title;
+                                'thumbnail' = $currentPost.thumbnail;
+                                'score' = $currentPost.score;
+                                'permalink' = $currentPost.permalink;
+                                'createdUTC' = $currentPost.createdUTC;
+                                'numComments' = $currentPost.num_comments;
+                                'postHint' = $currentPost.post_hint;
                             }
+                            
 
                             $tempObj = New-Object -TypeName PSObject -Property $props
-                            $postsReturn += $tempObj
-                            Write-verbose -message "Created a post object $tempObj"
+
+                            # return only items that match our specific filters
+                            switch -Exact ($Filter){
+                               
+                                "TextPost" { if (!($currentPost.url | Test-jnRedditImage)) { $postsReturn += $tempObj } }
+                                "ImagePost" { if ($currentPost.url | Test-jnRedditImage) { $postsReturn += $tempObj } }
+                                "Any" { $postsReturn += $tempObj }
+                            }
+
                         }
 
                     } catch {
